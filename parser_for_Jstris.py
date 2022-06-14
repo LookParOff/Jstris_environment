@@ -1,5 +1,6 @@
 import io
 from PIL import Image
+from PIL import ImageEnhance
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -8,7 +9,8 @@ from selenium.webdriver.chrome.service import Service
 
 
 class Jstris:
-    def __init__(self, path_to_chrome_driver, mode_of_game, headless):
+    def __init__(self, path_to_chrome_driver, mode_of_game, headless, grayscale):
+        self.grayscale = grayscale
         ser = Service(path_to_chrome_driver)
         op = webdriver.ChromeOptions()
         if headless:
@@ -27,13 +29,31 @@ class Jstris:
             self.__driver.close()
             quit()
         self.__game = self.__generator_of_page()
+        self.__game_main_screen = self.__driver.find_element(By.XPATH, '//*[@id="myCanvas"]')
 
     def get_frame_of_game(self):
-        return next(self.__game)
+        try:
+            return next(self.__game)
+        except Exception as e:
+            print("I catch some exception while getting game state")
+            print(e)
+            self.__driver.close()
+            quit()
+
+    def perform_action(self, action):
+        available_keys = {0: Keys.ARROW_LEFT, 1: Keys.ARROW_RIGHT,  # left and right moves of shapes
+                          2: Keys.ARROW_DOWN, 3: Keys.SPACE,  # soft drop, hard drop
+                          4: "z", 5: Keys.ARROW_UP,  # rotate left, rotate right
+                          6: "a",  # rotate 180
+                          7: "c"}  # hold
+        self.__game_main_screen.send_keys(available_keys[action])
 
     def close(self):
         self.__driver.close()
         self.__game.close()
+
+    def reset(self):
+        self.__game_main_screen.send_keys(Keys.F4)
 
     def __change_game_mode(self, mode):
         mode_xpaths = {"Practice": '//*[@id="plD"]'}
@@ -61,15 +81,25 @@ class Jstris:
         while True:
             main_canvas = self.__driver.find_element(By.XPATH, '//*[@id="myCanvas"]')
             main_canvas = main_canvas.screenshot_as_png
-            buffer = io.BytesIO(main_canvas)
-            main_canvas = Image.open(buffer)
+            main_canvas = Image.open(io.BytesIO(main_canvas))
+
             queue_canvas = self.__driver.find_element(By.XPATH, '//*[@id="queueCanvas"]')
             queue_canvas = queue_canvas.screenshot_as_png
-            buffer = io.BytesIO(queue_canvas)
-            queue_canvas = Image.open(buffer)
+            queue_canvas = Image.open(io.BytesIO(queue_canvas))
+
+            hold_canvas = self.__driver.find_element(By.XPATH, '//*[@id="holdCanvas"]')
+            hold_canvas = hold_canvas.screenshot_as_png
+            hold_canvas = Image.open(io.BytesIO(hold_canvas))
+
             stats_canvas = self.__driver.find_element(By.XPATH, '//*[@id="glstats"]')
             stats_canvas = stats_canvas.screenshot_as_png
-            buffer = io.BytesIO(stats_canvas)
-            stats_canvas = Image.open(buffer)
-            yield main_canvas, queue_canvas, stats_canvas
+            stats_canvas = Image.open(io.BytesIO(stats_canvas))
+
+            if self.grayscale:
+                ImageEnhance.Color(main_canvas).enhance(0)
+                main_canvas = ImageEnhance.Color(main_canvas).enhance(0)
+                queue_canvas = ImageEnhance.Color(queue_canvas).enhance(0)
+                hold_canvas = ImageEnhance.Color(hold_canvas).enhance(0)
+                stats_canvas = ImageEnhance.Color(stats_canvas).enhance(0)
+            yield main_canvas, queue_canvas, hold_canvas, stats_canvas
 
